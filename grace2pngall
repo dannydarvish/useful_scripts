@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+import os
+import sys
+
+try:
+    directory = sys.argv[1]
+except:
+    sys.exit('Usage: grace2pngall [directory]')
+
+files = os.popen('ls ' + directory).read().split('\n')
+for file in files:
+    if file[-3:] == 'agr':
+        os.system('grace2png ' + sys.argv[1] + '/' + file)

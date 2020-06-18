@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+
+################################################################################################
+# This script makes a staircase plot for an input XML of the form
+# <Staircase>
+#     <Title>A1g</Title>
+#     <YAxisLabel>$a_t E$</YAxisLabel>
+#     <Ordering>global or category</Ordering> (global orders by just energy, category orders by
+#                                              category first, then energy)
+#     <Category>
+#         <Name>Category name</Name>
+#         <Color>matplotlib compatible color string</Color> (should be unique for each category)
+#         <Colors>r g b...</Colors> (if sorting by index, you can instead specify unique colors for each level)
+#         <Index>0</Index> (optional: choose an ordering of the categories)
+#         <Energies>e0 e1 e2 e3...</Energies>
+#         <Uncertainties>u0 u1 u2 u3...</Uncertainties>
+#     </Category>
+#     ...more categories
+#     <Legend> (optional: if colors are manually specified, you can change the legend here)
+#         <Colors>r g b...</Colors>
+#         <Labels>label0 label2...</Label>
+#     </Legend>
+#     <LegendLoc>matplotlib compatible legend location</LegendLoc> (optional: default is lower right)
+# # To implement:
+#    <NoninteractingLevels>
+#        <Color>matplotlib compatible color string</Color>
+#        <Energies>e0 e1 e2 e3...</Energies>
+#        <Uncertainties>u0 u1 u2 u3...</Uncertainties>
+#        <Labels>
+#            <Label>label 0</Label>
+#            <Label>label 1</Label>
+#            <Label>label 2</Label>
+#            ...
+#        </Labels>
+#        <Fontsize>9</Fontsize>
+#    </NoninteractingLevels>
+# </Staircase>
+################################################################################################
+
+from functools import reduce
+from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import xml.etree.ElementTree as et
+import numpy as np
+import sys
+
+from matplotlib import rc
+rc('text', usetex=True)
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size':14})
+
+try:
+    input_file_name = sys.argv[1]
+except:
+    sys.exit('Usage: staircase input.xml (optional: output filename)')
+
+root = et.parse(input_file_name).getroot()
+
+# count how many boxes there will be
+energy_elements = root.iter('Energies')
+num_boxes = 0
+for el in energy_elements:
+    num_boxes += len(el.text.split())
+
+# arbitarily choose the x-axis of our plot to have the range [0,1]
+box_width = 0.8 * 1.0 / num_boxes
+
+# To sort by category, we either sort arbitrary by color alphabetically, or
+# sort by the optional user-defined <Index>
+#
+# This reduce function just makes sure that if we are sorting by index, then
+# every <Category> must have an <Index> element.
+sorting_by_cat_ind =\
+    reduce(lambda x, y: x * y, [el.find('Index') is not None for el in root.findall('Category')])
+
+boxes = []
+for category in root.findall('Category'):
+    energies_str = category.find('Energies').text
+    energies = [float(en) for en in energies_str.split()]
+    uncertainties_str = category.find('Uncertainties').text
+    uncertainties = [float(unc) for unc in uncertainties_str.split()]
+    for level in zip(energies, uncertainties):
+        boxes.append({'y' : level[0] - level[1],
+                      'height' : 2 * level[1],
+                      'color' : category.find('Color').text})
+        if sorting_by_cat_ind:
+            boxes[-1]['index']= int(category.find('Index').text)
+
+energies = []
+if sorting_by_cat_ind:
+    category_indices = []
+else:
+    colors = []
+for box in boxes:
+    energies.append(box['y'] + 0.5 * box['height'])
+    if sorting_by_cat_ind:
+        category_indices.append(box['index'])
+    else:
+        colors.append(box['color'])
+
+if root.find('Ordering').text == 'category':
+    if sorting_by_cat_ind:
+        sorted_energy_indices = np.lexsort((energies, category_indices))
+    else:
+        sorted_energy_indices = np.lexsort((energies, colors))
+else: 
+    sorted_energy_indices = np.argsort(energies)
+
+boxes = [boxes[i] for i in sorted_energy_indices]
+
+ni_levels = root.find('NoninteractingLevels')
+if ni_levels is not None:
+    energies_str = ni_levels.find('Energies').text
+    energies = [float(en) for en in energies_str.split()]
+    uncertainties_str = ni_levels.find('Uncertainties').text
+    uncertainties = [float(unc) for unc in uncertainties_str.split()]
+    for level in zip(energies, uncertainties):
+        boxes.append({'y' : level[0] - level[1],
+                      'height' : 2 * level[1],
+                      'color' : ni_levels.find('Color').text})
+
+for ind, box in enumerate(boxes):
+    box['x'] = (float(ind) + 0.1) / num_boxes
+
+fig, ax = plt.subplots(1)
+for box in boxes:
+    ax.add_patch(Rectangle((box['x'], box['y']), box_width, box['height'],
+                           fill = True, color = box['color']))
+
+if ni_levels is not None:
+    ni_boxes = boxes[-1*len(energies_str.split()):]
+    ni_box_heights = [ni_box['height'] for ni_box in ni_boxes]
+    for box, label in zip(ni_boxes, ni_levels.find('Labels')):
+        plt.text(box['x'], box['y'] + box['height'] + 0.1 * max(ni_box_heights), label.text,
+            fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+            verticalalignment='bottom')
+
+ceilings = [box['y'] + box['height'] for box in boxes]
+floors = [box['y'] for box in boxes]
+plt.ylim([0.8* min(floors) - 0.2 * max(ceilings), 1.2 * max(ceilings) - 0.2 * min(floors)])
+left_walls = [box['x'] for box in boxes]
+right_walls = [box['y'] + box_width for box in boxes]
+plt.xlim([0, 1])
+
+# Add vertical lines to separate categories
+if sorting_by_cat_ind:
+    num_energies = 0
+    categories = root.findall('Category')
+    cat_ind = [int(cat.find('Index').text) for cat in categories]
+    sorted_indices = np.argsort(cat_ind)
+    categories = [categories[ind] for ind in sorted_indices]
+    
+for category in categories[:len(categories) - 1*int(root.find('NoninteractingLevels') is None)]:
+    num_energies += len(category.find('Energies').text.split())
+    plt.plot([(num_energies) / num_boxes, (num_energies) / num_boxes], [-100, 100], '--k')
+###########################################
+
+##### REMOVE ######
+# y = [1.6789741965126972,2.0,2.149160515842863,2.4195185233759364,2.560273711015999,2.7797684250781747]
+# names = [r"$\pi \left( 0 \right) \eta \left( 0 \right) $",
+#          r"$K \left( 0 \right) K \left( 0 \right) $",
+#          r"$\pi \left( 1 \right) \eta \left( 1 \right) $",
+#          r"$K \left( 1 \right) K \left( 1 \right) $",
+#          r"$\pi \left( 2 \right) \eta \left( 2 \right)$",
+#          r"$K \left( 2 \right) K \left( 2 \right) $"]
+# for i in range(6):
+#     plt.text((13 + i + 0.1)*1.0/num_boxes, y[i] + 0.05, names[i], fontsize=9)
+###################
+
+#### REMOVE ######
+# y = [1.6789741965126972,2.0,2.149160515842863,2.4195185233759364,2.560273711015999,2.7797684250781747]
+# names = [r"$\pi \left( 0 \right) \eta \left( 0 \right) $",
+#          r"$K \left( 0 \right) K \left( 0 \right) $",
+#          r"$\pi \left( 1 \right) \eta \left( 1 \right) $",
+#          r"$K \left( 1 \right) K \left( 1 \right) $",
+#          r"$\pi \left( 2 \right) \eta \left( 2 \right)$",
+#          r"$K \left( 2 \right) K \left( 2 \right) $"]
+# for i in range(6):
+#     plt.text((13 + i + 0.1)*1.0/num_boxes, y[i] + 0.05, names[i], fontsize=9)
+# ###################
+
+# ##### REMOVE ######
+# y = [1.4727878871, 2.0378373496, 2.2038971825, 2.4623003022, 2.5968914774706837]
+# names = [r"$K \left( 0 \right) \pi \left( 0 \right) $",
+#         r"$K \left( 1 \right) \pi \left( 1 \right) $",
+#         r"$K \left( 0 \right) \eta \left( 0 \right) $",
+#         r"$K \left( 2 \right) \pi \left( 2 \right) $",
+#         r"$K \left( 1 \right) \eta \left( 1 \right) $"]
+# for i in range(5):
+#     plt.text((11 + i + 0.1)*1.0/num_boxes, y[i] + 0.05, names[i], fontsize=9)
+
+
+plt.xticks([])
+plt.title(root.find('Title').text)
+plt.ylabel(root.find('YAxisLabel').text, fontsize=24)
+
+handles = []
+legend = root.find('Legend')
+if legend is not None:
+    colors = legend.find('Colors').text.split()
+    labels = legend.find('Labels').text.split()
+    assert(len(colors) == len(labels))
+    for color, label in zip(colors, labels):
+        handles.append(mpatches.Patch(color=color, label=label))
+else:    
+    for category in root.findall('Category'):
+        handles.append(mpatches.Patch(color=category.find('Color').text,
+                                    label=category.find('Name').text))
+
+plt.legend(handles=handles, loc='lower right', fontsize=12, frameon=False)
+fig.set_size_inches(10, 5)
+try:
+    file_name = sys.argv[2]
+    plt.savefig(file_name)
+except:
+    plt.show()

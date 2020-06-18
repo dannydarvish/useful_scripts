@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+import sys
+from xml.dom import minidom
+import xml.etree.ElementTree as et
+if len(sys.argv) < 2:
+    sys.exit('Usage: sigmond_convert in_filename (optional: out_filename)')
+in_filename = sys.argv[1]
+if len(sys.argv) > 2:
+    out_filename = sys.argv[2]
+elif in_filename[-4:] == '.xml':
+    out_filename = in_filename[:-4] + '_converted.xml'
+else:
+    out_filename = in_filename + '_converted'
+root = et.parse(in_filename).getroot()
+count = 0
+for el in root.iter():
+    if el.tag == 'Name' or el.tag == 'ObsName':
+        if len(el.text) < 3:
+            el.text += '0' * (3 - len(el.text))
+            count += 1
+        elif len(el.text) > 64:
+            sys.exit('Found bad <Name> or <ObsName> tag(s). Must be < 64 chars.')
+if count:
+    print('<Name>s and <ObsName>s must be > 3 characters. Added padding characters to %d names.' % count)
+for task in root.find('TaskSequence'):
+    action = task.find('Action')
+    if action.text == 'DoCorrMatrixRotation':
+        rotate_by = task.find('RotateBy')
+        if rotate_by is None:
+            rotate_by = et.Element('RotateMode')
+            rotate_by.text = 'bins'
+            task.append(rotate_by)
+        else:
+            rotate_by.tag = 'RotateMode'
+        write_rot_corr = task.find('WriteRotatedCorrToFile')
+        if write_rot_corr is not None:
+            type = write_rot_corr.find('Type')
+            if type is not None:
+                write_rot_corr.remove(write_rot_corr.find('Type'))
+            overwrite = write_rot_corr.find('Overwrite')
+            if overwrite is not None:
+                write_rot_corr.remove(overwrite)
+                write_rot_corr.append(et.fromstring(r'<WriteMode>overwrite</WriteMode>'))
+            else:
+                write_rot_corr.append(et.fromstring(r'<WriteMode>protect</WriteMode>'))
+    elif action.text == 'WriteSamplingsToFile':
+        action.text = 'WriteToFile'
+        task.insert(1, et.fromstring(r'<FileType>samplings</FileType>'))
+        samplingmode = task.find('SamplingMode')
+        if samplingmode is not None:
+            task.remove(samplingmode)
+        filemode = task.find('FileMode')
+        if filemode is not None: # should only be present if it had an overwrite tag before
+            filemode.tag = 'WriteMode'
+        else:
+            task.append(et.fromstring(r'<WriteMode>protect</WriteMode>'))
+    elif action.text == 'DoObsFunction':
+        write_to_bin = task.find('WriteToBinFile')
+        if write_to_bin is not None:
+            write_to_file = et.Element('WriteToFile')
+            et.SubElement(write_to_file, et.Element('FileName')).text = write_to_bin.text
+            write_to_file.append(et.fromstring(r'<FileType>bins</FileType>'))
+            if task.find('FileMode') is not None:
+                write_to_file.append(et.fromstring(r'<WriteMode>overwrite</WriteMode>'))
+            else:
+                write_to_file.append(et.fromstring(r'<WriteMode>protect</WriteMode>'))
+
+xmlstr = minidom.parseString(
+        et.tostring(root, 'utf-8')).toprettyxml(indent="  ")
+xmllines = xmlstr.split('\n')
+with open(out_filename, 'w') as f:
+    for xmlline in xmllines:
+        xmlline = xmlline.rstrip()
+        if xmlline != '':
+            f.write('{}\n'.format(xmlline))
+    f.close()

@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+import xml.etree.ElementTree as et
+import os
+import sys
+
+try:
+    log = sys.argv[1]
+except:
+    print('Usage: staircase_from_log logfile (optional: output_file_name. default is open pyplot plot instead of saving.)')
+    sys.exit(1)
+
+print('starcase_from_log assumes the fit energy is <FitParameter0>.')
+
+root = et.parse(log).getroot()
+f = open(log)
+ratio = '<Type>Ratio</Type>' in f.read()
+f.close()
+
+en = []
+unc = []
+
+if ratio:
+    print('Ratios found. Using E/m_ref.')
+    for el in root.iter('DoObsFunction'):
+        if el.find('Type').text == 'Ratio':
+            mce = el.find('MCEstimate')
+            en.append(mce.find('FullEstimate').text)
+            unc.append(mce.find('SymmetricError').text)
+    xml = '''
+    <Staircase>
+        <Title> </Title>
+        <YAxisLabel>$E/E_\\mathrm{ref}$</YAxisLabel>
+        <Ordering>category</Ordering>
+        <Category>
+            <Name>Fit energies</Name>
+            <Color>b</Color>
+            <Energies>%s</Energies>
+            <Uncertainties>%s</Uncertainties>
+        </Category>
+    </Staircase>
+    ''' % (' '.join(en), ' '.join(unc))
+else:
+    print('No ratios found. Using a_t*E.')
+    for el in root.iter('FitParameter0'):
+        mce = el.find('MCEstimate')
+        en.append(mce.find('FullEstimate').text)
+        unc.append(mce.find('SymmetricError').text)
+    xml = '''
+    <Staircase>
+        <Title> </Title>
+        <YAxisLabel>$a_t E$</YAxisLabel>
+        <Ordering>category</Ordering>
+        <Category>
+            <Name>Fit energies</Name>
+            <Color>b</Color>
+            <Energies>%s</Energies>
+            <Uncertainties>%s</Uncertainties>
+        </Category>
+    </Staircase>
+    ''' % (' '.join(en), ' '.join(unc))
+
+temp = open('temp.xml', 'w')
+temp.write(xml)
+temp.close()
+
+if len(sys.argv) > 2:
+    out_file_name = sys.argv[2]
+else:
+    out_file_name = ''
+
+os.system('staircase temp.xml ' + out_file_name)
+os.system('rm temp.xml')

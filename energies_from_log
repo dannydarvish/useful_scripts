@@ -1,0 +1,36 @@
+#!/usr/bin/env python
+
+#energies_from_log assumes the fit energy is <FitParameter0>. Output is energy, uncertainty.
+
+import xml.etree.ElementTree as et
+import sys
+
+try:
+    log = sys.argv[1]
+except:
+    print('Usage: energies_from_log logfile')
+    sys.exit(1)
+
+root = et.parse(log).getroot()
+f = open(log)
+ratio = '<Type>Ratio</Type>' in f.read()
+f.close()
+
+en = []
+unc = []
+if ratio:
+    print('Ratios found. Using E/m_ref.')
+    for el in root.iter('DoObsFunction'):
+        if el.find('Type').text == 'Ratio':
+            mce = el.find('MCEstimate')
+            en.append(mce.find('FullEstimate').text)
+            unc.append(mce.find('SymmetricError').text)
+else:
+    print('No ratios found. Using a_t*E.')
+    for el in root.iter('FitParameter0'):
+        mce = el.find('MCEstimate')
+        en.append(mce.find('FullEstimate').text)
+        unc.append(mce.find('SymmetricError').text)
+
+for e, u in zip(en, unc):
+    print(e + ' ' + u)
