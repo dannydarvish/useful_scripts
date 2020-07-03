@@ -8,12 +8,14 @@
 # <Staircase>
 #     <Title>A1g</Title>
 #     <YAxisLabel>$a_t E$</YAxisLabel>
+#     <Ordering>global or category</Ordering> (global orders by just energy, category orders by
+#                                              category first, then energy)
 #     <Category>
 #         <Name>Category name</Name>
 #         <Color>matplotlib compatible color string</Color> (should be unique for each category)
 #         <Colors>r g b...</Colors> (if sorting by index, you can instead specify unique colors for each level)
 #         <Hatched>true false false true...</Hatched> optional
-#         <Index>0</Index> choose an ordering of the categories
+#         <Index>0</Index> (optional: choose an ordering of the categories)
 #         <Energies>e0 e1 e2 e3...</Energies>
 #         <Uncertainties>u0 u1 u2 u3...</Uncertainties>
 #     </Category>
@@ -36,8 +38,8 @@
 #        <Fontsize>9</Fontsize>
 #    </NoninteractingLevels>
 #    <Thresholds>
-#        <ThresholdEnergies>e0 e1 e2...</ThresholdEnergies>
-#        <ThresholdUncertainties>u0 u1 u2...</ThresholdUncertainties>
+#        <Energies>e0 e1 e2...</Energies>
+#        <Uncertainties>u0 u1 u2...</Uncertainties>
 #    </Thresholds>
 # </Staircase>
 ################################################################################################
@@ -62,7 +64,7 @@ except:
 
 root = et.parse(input_file_name).getroot()
 
-# count how many boxes there will be (not counting boxes split into multiple colors)
+# count how many boxes there will be
 energy_elements = root.iter('Energies')
 num_boxes = 0
 for el in energy_elements:
@@ -71,100 +73,70 @@ for el in energy_elements:
 # arbitarily choose the x-axis of our plot to have the range [0,1]
 box_width = 0.8 * 1.0 / num_boxes
 
-# To sort by category, we sort by the user-defined <Index>
+# To sort by category, we either sort arbitrary by color alphabetically, or
+# sort by the optional user-defined <Index>
 #
-# This reduce function just makes sure that
+# This reduce function just makes sure that if we are sorting by index, then
 # every <Category> must have an <Index> element.
-assert(reduce(lambda x, y: x * y, [el.find('Index') is not None for el in root.findall('Category')]))
+sorting_by_cat_ind =\
+    reduce(lambda x, y: x * y, [el.find('Index') is not None for el in root.findall('Category')])
 
 boxes = []
 for category in root.findall('Category'):
     energies_str = category.find('Energies').text
-    energies = np.array([float(en) for en in energies_str.split()])
-    argsort_en = np.argsort(energies)
-    energies = energies[argsort_en]
+    energies = [float(en) for en in energies_str.split()]
     uncertainties_str = category.find('Uncertainties').text
-    uncertainties = np.array([float(unc) for unc in uncertainties_str.split()])
-    uncertainties = uncertainties[argsort_en]
+    uncertainties = [float(unc) for unc in uncertainties_str.split()]
     color = category.find('Color')
     colors = category.find('Colors')
     hatched = category.find('Hatched')
-    x_ind = 0
     if color is not None:
         for energy, error in zip(energies, uncertainties):
             boxes.append({'y' : energy - error,
                         'height' : 2 * error,
-                        'color' : category.find('Color').text,
-                        'index' : int(category.find('Index').text),
-                        'x_ind' : x_ind})
-            x_ind += 1
+                        'color' : category.find('Color').text})
+            if sorting_by_cat_ind:
+                boxes[-1]['index']= int(category.find('Index').text)
     elif colors is not None:
-        colors = np.array(colors.text.split())
-        colors = colors[argsort_en]
         if hatched is not None:
-            hatched = np.array(hatched.text.split())
-            hatched = hatched[argsort_en]
-            for energy, error, color, hatch in zip(energies, uncertainties, colors, hatched):
-                color_split = color.split('/')
-                if len(color_split) == 1:
-                    boxes.append({'y' : energy - error,
-                                'height' : 2 * error,
-                                'color' : color,
-                                'index' : int(category.find('Index').text),
-                                'x_ind' : x_ind,
-                                'hatch' : False if hatch == 'false' else True})
-                    x_ind += 1
-                else:
-                    for i, cs in enumerate(color_split):
-                        boxes.append({'y' : (energy - error) + i * 2 * error / len(color_split),
-                                    'height' : 2 * error / len(color_split),
-                                    'color' : cs,
-                                    'index' : int(category.find('Index').text),
-                                    'x_ind' : x_ind,
-                                    'hatch' : False if hatch == 'false' else True})
-                    x_ind += 1
+            for energy, error, color, hatch in zip(energies, uncertainties, colors.text.split(), hatched.text.split()):
+                boxes.append({'y' : energy - error,
+                            'height' : 2 * error,
+                            'color' : color,
+                            'hatch' : False if hatch == 'false' else True})
+                if sorting_by_cat_ind:
+                    boxes[-1]['index']= int(category.find('Index').text)
         else:
-            for energy, error, color in zip(energies, uncertainties, colors):
-                color_split = color.split('/')
-                if len(color_split) == 1:
-                    boxes.append({'y' : energy - error,
-                                'height' : 2 * error,
-                                'color' : color,
-                                'index' : int(category.find('Index').text),
-                                'x_ind' : x_ind})
-                    x_ind += 1
-                else:
-                    for i, cs in enumerate(color_split):
-                        boxes.append({'y' : (energy - error) + i * 2 * error / len(color_split),
-                                    'height' : 2 * error / len(color_split),
-                                    'color' : cs,
-                                    'index' : int(category.find('Index').text),
-                                    'x_ind' : x_ind})
-                    x_ind += 1
+            for energy, error, color in zip(energies, uncertainties, colors.text.split()):
+                boxes.append({'y' : energy - error,
+                            'height' : 2 * error,
+                            'color' : color})
+                if sorting_by_cat_ind:
+                    boxes[-1]['index']= int(category.find('Index').text)
     else:
         raise(RuntimeError(f'Need to specify Color or Colors for {category.text}'))
 
-# energies = []
-category_indices = []
-# for box in boxes:
-#     energies.append(box['y'] + 0.5 * box['height'])
-#     category_indices.append(box['index'])
-x_inds = []
+energies = []
+if sorting_by_cat_ind:
+    category_indices = []
+else:
+    colors = []
 for box in boxes:
-    x_inds.append(box['x_ind'])
-    category_indices.append(box['index'])
+    energies.append(box['y'] + 0.5 * box['height'])
+    if sorting_by_cat_ind:
+        category_indices.append(box['index'])
+    else:
+        colors.append(box['color'])
 
-sorted_box_indices = np.lexsort((x_inds, category_indices))
+if root.find('Ordering').text == 'category':
+    if sorting_by_cat_ind:
+        sorted_energy_indices = np.lexsort((energies, category_indices))
+    else:
+        sorted_energy_indices = np.lexsort((energies, colors))
+else: 
+    sorted_energy_indices = np.argsort(energies)
 
-boxes = [boxes[i] for i in sorted_box_indices]
-
-# define x_ind_global to be a global index
-x_ind_global = 0
-boxes[0]['x_ind_global'] = 0
-for i in range(1,len(boxes)):
-    if boxes[i - 1]['x_ind'] != boxes[i]['x_ind']:
-        x_ind_global += 1
-    boxes[i]['x_ind_global'] = x_ind_global
+boxes = [boxes[i] for i in sorted_energy_indices]
 
 ni_levels = root.find('NoninteractingLevels')
 if ni_levels is not None:
@@ -173,15 +145,12 @@ if ni_levels is not None:
     uncertainties_str = ni_levels.find('Uncertainties').text
     uncertainties = [float(unc) for unc in uncertainties_str.split()]
     for level in zip(energies, uncertainties):
-        x_ind_global += 1
         boxes.append({'y' : level[0] - level[1],
                       'height' : 2 * level[1],
-                      'color' : ni_levels.find('Color').text,
-                      'x_ind_global' : x_ind_global})
-# for ind, box in enumerate(boxes):
-#     box['x'] = (float(ind) + 0.1) / num_boxes
-for box in boxes:
-    box['x'] = (float(box['x_ind_global'] + 0.1) / (x_ind_global + 1))
+                      'color' : ni_levels.find('Color').text})
+
+for ind, box in enumerate(boxes):
+    box['x'] = (float(ind) + 0.1) / num_boxes
 
 fig, ax = plt.subplots(1)
 rcParams['hatch.linewidth'] = 1.0 
@@ -209,25 +178,26 @@ plt.ylim([ymin, ymax])
 left_walls = [box['x'] for box in boxes]
 right_walls = [box['y'] + box_width for box in boxes]
 xmin = 0
-xmax = 1.0
+xmax = 1.07
 plt.xlim([xmin, xmax])
 
 # Add vertical lines to separate categories
-categories = root.findall('Category')
-if len(categories) > 1:
+if sorting_by_cat_ind:
     num_energies = 0
+    categories = root.findall('Category')
     cat_ind = [int(cat.find('Index').text) for cat in categories]
     sorted_indices = np.argsort(cat_ind)
     categories = [categories[ind] for ind in sorted_indices]
-    for category in categories[:len(categories) - 1*int(root.find('NoninteractingLevels') is None)]:
-        num_energies += len(category.find('Energies').text.split())
-        plt.plot([(num_energies) / num_boxes, (num_energies) / num_boxes], [-100, 100], '--k')
+    
+for category in categories[:len(categories) - 1*int(root.find('NoninteractingLevels') is None)]:
+    num_energies += len(category.find('Energies').text.split())
+    plt.plot([(num_energies) / num_boxes, (num_energies) / num_boxes], [-100, 100], '--k')
 
 # add thresholds
 thresholds = root.find('Thresholds')
 if thresholds is not None:
-    energies = [float(e) for e in thresholds.find('ThresholdEnergies').text.split()]
-    uncertainties = [float(u) for u in thresholds.find('ThresholdUncertainties').text.split()]
+    energies = [float(e) for e in thresholds.find('Energies').text.split()]
+    uncertainties = [float(u) for u in thresholds.find('Uncertainties').text.split()]
     assert(len(energies) == len(uncertainties))
     for e, u in zip(energies, uncertainties):
         if u/e > 1e-6:
