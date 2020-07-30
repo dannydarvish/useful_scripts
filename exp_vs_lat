@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+
+################################################################################################
+# This script makes a staircase plot for an input XML of the form
+# <ExpVsLat>
+#     <Title>G1_g</Title>
+#     <YAxisLabel>$\frac{E}{m_N}$</YAxisLabel>
+#     <Experiment>
+#         <Color>matplotlib compatible color string</Color>
+#         <Energies>e0 e1 e2 e3...</Energies>
+#         <Uncertainties>u0 u1 u2 u3...</Uncertainties>
+#         <DecayWidths>w0 w1 w2...</DecayWidths>
+#         <Names>$\Sigma$ $\Sigma(1660)$...</Names>
+#         <FontSize>7</FontSize>
+#     </Experiment>
+#    <Lattice>
+#         <Energies>e0 e1 e2 e3...</Energies>
+#         <Uncertainties>u0 u1 u2 u3...</Uncertainties>
+#    </Lattice>
+#    <YLims>ymin ymax</YLims> (optional)
+# </ExpVsLat>
+################################################################################################
+
+from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib import rcParams
+import xml.etree.ElementTree as et
+import numpy as np
+import sys
+
+from matplotlib import rc
+rc('text', usetex=True)
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern'], 'size':14})
+
+try:
+    input_file_name = sys.argv[1]
+except:
+    sys.exit('Usage: exp_vs_lat input.xml (optional: output filename)')
+
+root = et.parse(input_file_name).getroot()
+
+# count how many boxes there will be
+energy_elements = root.iter('Energies')
+num_boxes = 0
+for el in energy_elements:
+    num_boxes += len(el.text.split())
+
+# arbitarily choose the x-axis of our plot to have the range [0,1]
+box_width = 0.8 * 1.0 / num_boxes
+
+exp = root.find('Experiment')
+exp_en_str = exp.find('Energies').text
+exp_en = np.array([float(en) for en in exp_en_str.split()])
+exp_unc_str = exp.find('Uncertainties').text
+exp_unc = np.array([float(unc) for unc in exp_unc_str.split()])
+exp_width_str = exp.find('DecayWidths').text
+exp_width = np.array([float(width) for width in exp_width_str.split()])
+exp_names = exp.find('Names').text.split()
+exp_color = exp.find('Color').text
+
+lat = root.find('Lattice')
+lat_en_str = lat.find('Energies').text
+lat_en = np.array([float(en) for en in lat_en_str.split()])
+lat_unc_str = lat.find('Uncertainties').text
+lat_unc = np.array([float(unc) for unc in lat_unc_str.split()])
+
+fig, ax = plt.subplots(1)
+for i, en, unc, width, name in zip(range(len(exp_en)), exp_en, exp_unc, exp_width, exp_names):
+    if width > 2*unc:
+        ax.add_patch(Rectangle((i / num_boxes + 0.1*box_width, en - width/2), box_width, width,
+                                fill=True, facecolor=exp_color, edgecolor='#404040',
+                                linewidth=0.5, alpha=0.5))
+        ax.add_patch(Rectangle((i / num_boxes + 0.1*box_width, en - unc), box_width, 2*unc,
+                                fill=True, facecolor=exp_color, zorder=2))
+    else:
+        ax.add_patch(Rectangle((i / num_boxes + 0.1*box_width, en - unc), box_width, 2*unc,
+                                fill=True, facecolor=exp_color, linewidth=0.5,
+                                edgecolor='#404040'))
+
+# Add vertical line
+plt.plot(2*[len(exp_en) / num_boxes], [-100, 100], '--k')
+
+for i, en, unc in zip(range(len(exp_en), len(exp_en) + len(lat_en)), lat_en, lat_unc):
+    ax.add_patch(Rectangle((i / num_boxes + 0.1*box_width, en - unc), box_width, 2*unc,
+                            fill=True, facecolor='k'))
+
+plt.xlim([0, 1.0])
+ylims = root.find('YLims')
+if ylims is None:
+    ceilings = [en + max(unc,width/2) for en, unc, width in zip(exp_en, exp_unc, exp_width)] + \
+                [en + unc for en, unc in zip(lat_en, lat_unc)]
+    floors = [en - max(unc,width/2) for en, unc, width in zip(exp_en, exp_unc, exp_width)] + \
+                [en - unc for en, unc in zip(lat_en, lat_unc)]
+    ymin = min(floors) - 0.1*(max(ceilings) - min(floors))
+    ymax = max(ceilings) + 0.1*(max(ceilings) - min(floors))
+else:
+    ymin, ymax = [float(a) for a in ylims.text.split()]
+plt.ylim([ymin, ymax])
+
+for i, en, unc, width, name in zip(range(len(exp_en)), exp_en, exp_unc, exp_width, exp_names):
+    plt.text((i+0.5) / num_boxes, en - max(unc, width/2) - 0.02*(ymax-ymin), name, fontsize=int(exp.find('FontSize').text),
+             horizontalalignment='center', verticalalignment='top')
+
+plt.xticks([])
+plt.title(root.find('Title').text)
+plt.ylabel(root.find('YAxisLabel').text, rotation=1, fontsize=24)
+plt.gca().yaxis.set_label_coords(-0.05, 1)
+
+plt.text(len(exp_en) / 2 / num_boxes, ymin - 0.05 * (ymax - ymin), 'Experiment',
+        horizontalalignment='center', verticalalignment='top')
+plt.text((len(exp_en) + len(lat_en)/2) / num_boxes, ymin - 0.05 * (ymax - ymin), 'Lattice',
+        horizontalalignment='center', verticalalignment='top')
+
+fig.set_size_inches(9,6)
+try:
+    file_name = sys.argv[2]
+    plt.savefig(file_name, bbox_inches='tight')
+except:
+    plt.show()

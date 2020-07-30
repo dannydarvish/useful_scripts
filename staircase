@@ -62,7 +62,7 @@ except:
 
 root = et.parse(input_file_name).getroot()
 
-# count how many boxes there will be (not counting boxes split into multiple colors)
+# count how many boxes there will be (not counting extra boxes from splitting into multiple colors)
 energy_elements = root.iter('Energies')
 num_boxes = 0
 for el in energy_elements:
@@ -197,9 +197,33 @@ if ni_levels is not None:
     ni_boxes = boxes[-1*len(energies_str.split()):]
     ni_box_heights = [ni_box['height'] for ni_box in ni_boxes]
     for box, label in zip(ni_boxes, ni_levels.find('Labels')):
-        plt.text(box['x'] + box_width*1.1, box['y'] + 0.5 * box['height'], label.text,
-            fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
-            verticalalignment='center')
+        # plt.text(box['x'] + box_width*1.1, box['y'] + 0.5 * box['height'], label.text,
+        #     fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+        #     verticalalignment='center')
+        # # if label.text != r'$\overline K \left( 1 \right) K \left(1 \right)$':
+        # #     plt.text(box['x'] + box_width*1.1, box['y'] + 0.5 * box['height'], label.text,
+        # #         fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+        # #         verticalalignment='center')
+        # # else:
+        # #     plt.text(box['x'] - 0.3 * box_width, box['y'] + 2.1 * box['height'], label.text,
+        # #         fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+        # #         verticalalignment='bottom')
+        # # if label.text == r'$\pi \left( 0 \right) \eta \left(0 \right)$':
+        # #     plt.text(box['x'], box['y'] + box['height'] + 0.01, label.text,
+        # #         fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+        # #         verticalalignment='bottom')
+        if label.text == r'$\overline K \left( 1 \right) K \left(1 \right)$':
+            plt.text(box['x'] + box_width, box['y'] + box['height'] + 0.01, label.text,
+                fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='right',
+                verticalalignment='bottom')
+        elif label.text == r'$\pi \left( 0 \right) \eta^\prime \left(0 \right)$':
+            plt.text(box['x'] + box_width, box['y'] + box['height'] + 0.02, label.text,
+                fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='right',
+                verticalalignment='bottom')
+        else:
+            plt.text(box['x'], box['y'] + box['height'] + 0.01, label.text,
+                fontsize=int(ni_levels.find('Fontsize').text), horizontalalignment='left',
+                verticalalignment='bottom')
 
 ceilings = [box['y'] + box['height'] for box in boxes]
 floors = [box['y'] for box in boxes]
@@ -209,7 +233,7 @@ plt.ylim([ymin, ymax])
 left_walls = [box['x'] for box in boxes]
 right_walls = [box['y'] + box_width for box in boxes]
 xmin = 0
-xmax = 1.0
+xmax = 1.0 if root.find('NoninteractingLevels') is None else 1.04
 plt.xlim([xmin, xmax])
 
 # Add vertical lines to separate categories
@@ -222,6 +246,8 @@ if len(categories) > 1:
     for category in categories[:len(categories) - 1*int(root.find('NoninteractingLevels') is None)]:
         num_energies += len(category.find('Energies').text.split())
         plt.plot([(num_energies) / num_boxes, (num_energies) / num_boxes], [-100, 100], '--k')
+
+# plt.plot([19.0 / num_boxes, 19.0 / num_boxes], [-100, 100], '--k')
 
 # add thresholds
 thresholds = root.find('Thresholds')
@@ -262,6 +288,7 @@ else:
     loc = 'lower right'
 plt.legend(handles=handles, loc=loc, fontsize=12, frameon=False)
 fig.set_size_inches(10, 5)
+# fig.set_size_inches(10, 6)
 try:
     file_name = sys.argv[2]
     plt.savefig(file_name, bbox_inches='tight')

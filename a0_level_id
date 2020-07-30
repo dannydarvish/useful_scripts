@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+import xml.etree.ElementTree as et
+import sys
+import numpy as np
+from orderedset import OrderedSet
+
+fname = sys.argv[1]
+root = et.parse(fname).getroot()
+root.remove(root.find('InputXML'))
+do_z = list(root.iter('DoCorrMatrixZMagSquares'))
+assert(len(do_z) == 1)
+do_z = do_z[0]
+n_levels = len(do_z.find('OperatorZMagnitudeSquares').findall('ZMagSquare'))
+d = dict()
+# d[level]['max'] = list of operator names with max overlap
+# d[level]['subleading'] = list of operators with subleading overlap
+for l in range(n_levels):
+    d[l] = dict()
+    d[l]['max'] = []
+    d[l]['subleading'] = []
+for op_z in do_z.iter('OperatorZMagnitudeSquares'):
+    z_vals = [float(zms.find('Value').find('MCEstimate').find('FullEstimate').text)
+                for zms in op_z.iterfind('ZMagSquare')]
+    try:
+        d[np.argmax(z_vals)]['max'].append(op_z.find('GIOperatorString').text)
+    except AttributeError:
+        d[np.argmax(z_vals)]['max'].append(op_z.find('BLOperatorString').text)
+    for i, z_val in enumerate(z_vals):
+        if z_val / np.max(z_vals) >= 0.7:
+            try:
+                d[i]['subleading'].append(op_z.find('GIOperatorString').text)
+            except AttributeError:
+                d[i]['subleading'].append(op_z.find('BLOperatorString').text)
+
+color_map = {
+    'SH': 'k',
+    'etapi': 'C0',
+    'kkbar': 'C1',
+    'phipi': 'C2',
+    'tq': 'C3',
+    'NA': 'C7'
+}
+
+def get_color_string(opstring):
+    if 'ROT' in opstring:
+        return color_map['SH']
+    elif 'pion' in opstring and 'eta' in opstring:
+        return color_map['etapi']
+    elif 'kaon' in opstring and 'kbar' in opstring:
+        return color_map['kkbar']
+    elif 'phi' in opstring and 'pion' in opstring:
+        return color_map['phipi']
+    elif 'tq' in opstring:
+        return color_map['tq']
+    else:
+        raise RuntimeError(opstring)
+
+colors = ''
+hatched = ''
+for l in range(n_levels):
+    if len(d[l]['max']) == 0:
+        colors += color_map['NA']
+    elif len(d[l]['max']) == 1:
+        colors += get_color_string(d[l]['max'][0])
+    else:
+        color_strings = OrderedSet([get_color_string(os) for os in d[l]['max']])
+        for cs in color_strings:
+            colors += cs
+            colors += '/'
+        colors = colors[:-1]
+    colors += ' '
+    hatched_ = 'false'
+    # for os in d[l]['subleading']:
+    #     for os2 in d[l]['max']:
+    #         if os == os2:
+    #             hatched_ = 'false'
+    #     hatched_ = 'true'
+    # for os in d[l]['max']:
+    #     if 'ROT' in os:
+    #         hatched_ = 'false'
+    #         break
+    hatched += hatched_
+    hatched += ' '
+
+print(colors)
+print(hatched)
+

@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+import numpy as np
+import sys
+inf = sys.argv[1]
+outf = sys.argv[2]
+a = np.loadtxt(inf,delimiter=',')
+np.savetxt(outf, a.T, delimiter=' ', fmt='%1.17f')
