@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 
 # Rotates the covariance matrix for a set of x data points and y data points
 # Returns two matplotlib Line2D object representing the rotated error bars:
-#     errorbar_0,errorbar_1 = principle_errors(x,y)
-def principle_errors(x, y, x_mean = None, y_mean = None):
+#     errorbar_0,errorbar_1 = principal_errors(x,y)
+def principal_errors(x, y, x_mean = None, y_mean = None):
     '''Rotates the covariance matrix for a set of x data points and y data points
     Returns two matplotlib Line2D object representing the rotated error bars:
-        errorbar_0,errorbar_1 = principle_errors(x,y)'''
+        errorbar_0,errorbar_1 = principal_errors(x,y)'''
     if len(x) != len(y):
         raise RuntimeError('Sample size of variables not equal in construction of covariance matrix')
     if x_mean is None:
